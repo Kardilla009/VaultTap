@@ -1,0 +1,572 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Admin - VaultTap</title>
+<meta name="theme-color" content="#05070A">
+<meta name="robots" content="noindex, nofollow">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@500;600;700&display=swap" rel="stylesheet">
+
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        colors: {
+          vault: {
+            black: '#05070A', surface: '#0C1016', surface2: '#131A24', border: '#1C2431',
+            cyan: '#00E5FF', blue: '#3B82F6', mint: '#22D3A5', text: '#F5F7FA', muted: '#8B96A5',
+          }
+        },
+        fontFamily: {
+          display: ['"Space Grotesk"', 'sans-serif'],
+          body: ['Inter', 'sans-serif'],
+          mono: ['"JetBrains Mono"', 'monospace'],
+        },
+        boxShadow: { 'glow-cyan': '0 0 0 1px rgba(0,229,255,0.15), 0 8px 30px -8px rgba(0,229,255,0.35)' }
+      }
+    }
+  }
+</script>
+
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+<style>
+  body {
+    background-color: #05070A;
+    background-image:
+      linear-gradient(rgba(255,255,255,0.025) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,255,255,0.025) 1px, transparent 1px);
+    background-size: 48px 48px;
+  }
+  ::selection { background: rgba(0,229,255,0.25); color: #F5F7FA; }
+  .admin-input { width: 100%; background: #131A24; border: 1px solid #1C2431; border-radius: 0.75rem; padding: 0.75rem 1rem; font-size: 0.875rem; color: #F5F7FA; }
+  .admin-input::placeholder { color: #8B96A5; }
+  .admin-label { display: block; font-family: monospace; font-size: 0.625rem; text-transform: uppercase; letter-spacing: 0.05em; color: #8B96A5; margin-bottom: 0.375rem; }
+</style>
+</head>
+<body class="bg-vault-black text-vault-text font-body antialiased min-h-screen">
+
+  <!-- Loading / Access States -->
+  <div id="loadingScreen" class="min-h-screen flex items-center justify-center p-4">
+    <p class="text-vault-muted font-mono text-sm">Checking access...</p>
+  </div>
+
+  <div id="signInScreen" class="hidden min-h-screen flex items-center justify-center p-4">
+    <div class="w-full max-w-sm rounded-3xl border border-vault-border bg-vault-surface/60 backdrop-blur p-8 shadow-glow-cyan text-center">
+      <div class="w-11 h-11 mx-auto rounded-xl bg-gradient-to-br from-vault-cyan to-vault-blue flex items-center justify-center font-mono font-bold text-vault-black text-lg mb-5">V</div>
+      <h1 class="font-display font-semibold text-2xl mb-1">Admin Access</h1>
+      <p class="text-vault-muted text-sm mb-6">Sign in with the admin Google account.</p>
+      <button onclick="signInWithGoogle()" class="w-full py-3.5 bg-gradient-to-r from-vault-cyan to-vault-blue text-vault-black rounded-xl font-semibold">
+        <i class="fa-brands fa-google mr-1.5"></i>Continue with Google
+      </button>
+    </div>
+  </div>
+
+  <div id="deniedScreen" class="hidden min-h-screen flex items-center justify-center p-4">
+    <div class="w-full max-w-sm rounded-3xl border border-red-400/30 bg-vault-surface/60 p-8 text-center">
+      <i class="fa-solid fa-ban text-red-400 text-3xl mb-4"></i>
+      <h1 class="font-display font-semibold text-xl mb-2">Access Denied</h1>
+      <p class="text-vault-muted text-sm mb-6">This account doesn't have admin access.</p>
+      <button onclick="logOut()" class="w-full py-3 border border-vault-border rounded-xl text-sm text-vault-muted">Sign Out</button>
+    </div>
+  </div>
+
+  <!-- Admin Panel -->
+  <div id="adminPanel" class="hidden max-w-2xl mx-auto p-5 sm:p-6 pb-16">
+    <div class="flex items-center justify-between py-4 mb-4">
+      <div class="flex items-center gap-2.5">
+        <div class="w-9 h-9 rounded-lg bg-gradient-to-br from-vault-cyan to-vault-blue flex items-center justify-center font-mono font-bold text-vault-black text-lg">V</div>
+        <span class="font-display font-semibold text-lg tracking-tight">Admin Panel</span>
+      </div>
+      <button onclick="logOut()" class="text-sm font-mono text-vault-muted hover:text-red-400 transition-colors">Log Out</button>
+    </div>
+
+    <p id="signupCountDisplay" class="font-mono text-xs text-vault-muted mb-6">Loading participant count...</p>
+
+    <!-- Daily Words -->
+    <div class="rounded-3xl border border-vault-border bg-vault-surface/60 p-6 mb-5">
+      <p class="font-mono text-xs uppercase tracking-widest text-vault-cyan mb-1">Today's Words</p>
+      <p class="text-vault-muted text-sm mb-5">Exactly 9 letters each, no spaces.</p>
+
+      <label class="admin-label">YouTube Word</label>
+      <input id="cfgWord1" type="text" maxlength="9" placeholder="9 LETTERS" class="admin-input mb-4 font-mono tracking-widest uppercase">
+      <label class="admin-label">Telegram Word</label>
+      <input id="cfgWord2" type="text" maxlength="9" placeholder="9 LETTERS" class="admin-input mb-4 font-mono tracking-widest uppercase">
+      <label class="admin-label">X Word</label>
+      <input id="cfgWord3" type="text" maxlength="9" placeholder="9 LETTERS" class="admin-input mb-4 font-mono tracking-widest uppercase">
+
+      <label class="admin-label">YouTube URL</label>
+      <input id="cfgYoutube" type="url" placeholder="https://youtube.com/..." class="admin-input mb-4">
+      <label class="admin-label">Telegram URL</label>
+      <input id="cfgTelegram" type="url" placeholder="https://t.me/..." class="admin-input mb-4">
+      <label class="admin-label">X URL</label>
+      <input id="cfgX" type="url" placeholder="https://x.com/..." class="admin-input">
+
+      <button onclick="saveDailyConfig()" class="mt-5 w-full py-3.5 bg-gradient-to-r from-vault-cyan to-vault-blue text-vault-black rounded-xl font-semibold">Save Daily Config</button>
+      <p id="dailyConfigStatus" class="mt-3 text-center text-sm text-vault-muted"></p>
+    </div>
+
+    <!-- Tasks -->
+    <div class="rounded-3xl border border-vault-border bg-vault-surface/60 p-6 mb-5">
+      <p class="font-mono text-xs uppercase tracking-widest text-vault-cyan mb-1">Tasks</p>
+      <p class="text-vault-muted text-sm mb-5">Bonus VP tasks shown to users.</p>
+      <div id="taskRows" class="space-y-4"></div>
+      <button type="button" onclick="addTaskRow()" class="mt-4 w-full py-3 border border-dashed border-vault-border rounded-xl text-sm text-vault-muted">+ Add Task</button>
+      <p id="tasksStatus" class="mt-3 text-center text-sm text-vault-muted"></p>
+    </div>
+
+    <!-- Shop Items -->
+    <div class="rounded-3xl border border-vault-border bg-vault-surface/60 p-6 mb-5">
+      <p class="font-mono text-xs uppercase tracking-widest text-vault-cyan mb-1">Shop Items</p>
+      <p class="text-vault-muted text-sm mb-5">Consumables, passes, cosmetics.</p>
+      <div id="shopRows" class="space-y-4"></div>
+      <button type="button" onclick="addShopRow()" class="mt-4 w-full py-3 border border-dashed border-vault-border rounded-xl text-sm text-vault-muted">+ Add Shop Item</button>
+      <p id="shopStatus" class="mt-3 text-center text-sm text-vault-muted"></p>
+    </div>
+
+    <!-- Badges -->
+    <div class="rounded-3xl border border-vault-border bg-vault-surface/60 p-6 mb-5">
+      <p class="font-mono text-xs uppercase tracking-widest text-vault-cyan mb-1">Grant a Badge</p>
+      <p class="text-vault-muted text-sm mb-5">Search by email or username, pick a badge.</p>
+
+      <label class="admin-label">Search User</label>
+      <div class="flex gap-2 mb-3">
+        <input id="userSearchInput" type="text" placeholder="email or username" class="admin-input">
+        <button onclick="searchUsers()" class="shrink-0 px-4 py-3 bg-vault-surface2 border border-vault-border rounded-xl text-sm">Search</button>
+      </div>
+      <div id="userSearchResults" class="space-y-2 mb-4"></div>
+
+      <div id="grantBadgeForm" class="hidden">
+        <label class="admin-label">Selected User</label>
+        <p id="selectedUserLabel" class="text-sm mb-3"></p>
+        <label class="admin-label">Badge</label>
+        <select id="badgeSelect" class="admin-input mb-4"></select>
+        <button onclick="grantBadge()" class="w-full py-3.5 bg-gradient-to-r from-vault-cyan to-vault-blue text-vault-black rounded-xl font-semibold">Grant Badge</button>
+      </div>
+      <p id="badgeStatus" class="mt-3 text-center text-sm text-vault-muted"></p>
+    </div>
+
+    <!-- Users -->
+    <div class="rounded-3xl border border-vault-border bg-vault-surface/60 p-6 mb-5">
+      <p class="font-mono text-xs uppercase tracking-widest text-vault-cyan mb-1">Users</p>
+      <p class="text-vault-muted text-sm mb-5">Search by email, username, or referral code.</p>
+
+      <div class="flex gap-2 mb-3">
+        <input id="balUserSearchInput" type="text" placeholder="search users" class="admin-input">
+        <button onclick="searchBalanceUsers()" class="shrink-0 px-4 py-3 bg-vault-surface2 border border-vault-border rounded-xl text-sm">Search</button>
+      </div>
+      <div id="balUserResults" class="space-y-2"></div>
+
+      <div id="userDetailCard" class="hidden mt-5 pt-5 border-t border-vault-border">
+        <p id="userDetailName" class="text-lg font-display font-semibold mb-1"></p>
+        <p id="userDetailMeta" class="text-xs text-vault-muted font-mono mb-4"></p>
+
+        <label class="admin-label">Adjust Balance (VP, can be negative)</label>
+        <input id="adjustDelta" type="number" placeholder="e.g. 100 or -50" class="admin-input mb-3">
+        <label class="admin-label">Reason (required, logged permanently)</label>
+        <input id="adjustReason" type="text" placeholder="e.g. corrected double-claim bug" class="admin-input mb-3">
+        <button onclick="adjustBalance()" class="w-full py-3.5 bg-gradient-to-r from-vault-cyan to-vault-blue text-vault-black rounded-xl font-semibold">Apply Adjustment</button>
+        <p id="adjustStatus" class="mt-3 text-center text-sm text-vault-muted"></p>
+
+        <p class="admin-label mt-6">Adjustment History</p>
+        <div id="adjustHistory" class="space-y-2"></div>
+
+        <p class="admin-label mt-6">Badges</p>
+        <div id="userBadgeList" class="space-y-2"></div>
+      </div>
+    </div>
+
+  </div>
+
+  <script>
+    const supabaseClient = window.supabase.createClient(
+      "https://bhngnxsefwhauisqzchd.supabase.co",
+      "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJobmdueHNlZndoYXVpc3F6Y2hkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQxMTQ5NTYsImV4cCI6MjA5OTY5MDk1Nn0.HC_ack-IkEStK6lJXkvSmo30o8o5qyF1CDEWzc8Q2i4"
+    );
+
+    let selectedBalUserId = null;
+
+    async function searchBalanceUsers() {
+      const q = document.getElementById('balUserSearchInput').value.trim();
+      const resultsEl = document.getElementById('balUserResults');
+      if (!q) return;
+      const { data, error } = await supabaseClient.rpc('admin_search_users', { p_query: q });
+      resultsEl.innerHTML = '';
+      if (error) { resultsEl.innerHTML = '<p class="text-sm text-red-400">' + error.message + '</p>'; return; }
+      if (!data || !data.length) { resultsEl.innerHTML = '<p class="text-sm text-vault-muted">No matches.</p>'; return; }
+      data.forEach(u => {
+        const row = document.createElement('div');
+        row.className = "flex items-center justify-between rounded-xl bg-vault-surface2 border border-vault-border px-4 py-3 cursor-pointer";
+        row.innerHTML = '<span class="text-sm">' + u.su_display_name + ' <span class="text-vault-muted">(' + u.su_email + ')</span></span>' +
+          '<span class="font-mono text-xs text-vault-mint">' + u.su_balance + ' VP</span>';
+        row.addEventListener('click', () => selectBalanceUser(u));
+        resultsEl.appendChild(row);
+      });
+    }
+
+    async function selectBalanceUser(u) {
+      selectedBalUserId = u.su_user_id;
+      document.getElementById('userDetailCard').classList.remove('hidden');
+      document.getElementById('userDetailName').textContent = u.su_display_name;
+      document.getElementById('userDetailMeta').textContent =
+        u.su_email + ' · Balance: ' + u.su_balance + ' VP · Streak: ' + u.su_current_streak +
+        ' · Code: ' + u.su_referral_code + (u.su_referred_by ? ' · Referred by: ' + u.su_referred_by : '');
+      document.getElementById('adjustStatus').textContent = '';
+      loadAdjustHistory(u.su_user_id);
+      loadUserBadges(u.su_user_id);
+    }
+
+    async function loadUserBadges(userId) {
+      const listEl = document.getElementById('userBadgeList');
+      const { data, error } = await supabaseClient.rpc('admin_get_user_badges', { p_user_id: userId });
+      listEl.innerHTML = '';
+      if (error) { listEl.innerHTML = '<p class="text-xs text-red-400">' + error.message + '</p>'; return; }
+      if (!data || !data.length) { listEl.innerHTML = '<p class="text-xs text-vault-muted">No badges yet.</p>'; return; }
+      data.forEach(b => {
+        const row = document.createElement('div');
+        row.className = "flex items-center justify-between rounded-lg bg-vault-surface2 border border-vault-border px-3 py-2";
+        row.innerHTML = '<span class="text-xs font-mono">' + b.ub_badge_key + '<br><span class="text-vault-muted">' + new Date(b.ub_awarded_at).toLocaleDateString() + '</span></span>';
+        const btn = document.createElement('button');
+        btn.textContent = 'Revoke';
+        btn.className = "font-mono text-[10px] px-2.5 py-1.5 rounded-full bg-red-400/10 text-red-400 border border-red-400/30";
+        btn.addEventListener('click', () => revokeBadge(userId, b.ub_badge_key));
+        row.appendChild(btn);
+        listEl.appendChild(row);
+      });
+    }
+
+    async function revokeBadge(userId, badgeKey) {
+      const { data, error } = await supabaseClient.rpc('admin_revoke_badge', { p_user_id: userId, p_badge_key: badgeKey });
+      if (error) { alert("Error: " + error.message); return; }
+      if (!data.revoked) { alert("Could not revoke: " + data.reason); return; }
+      loadUserBadges(userId);
+    }
+
+    async function loadAdjustHistory(userId) {
+      const historyEl = document.getElementById('adjustHistory');
+      const { data, error } = await supabaseClient.rpc('admin_get_balance_history', { p_user_id: userId });
+      historyEl.innerHTML = '';
+      if (error) { historyEl.innerHTML = '<p class="text-xs text-red-400">' + error.message + '</p>'; return; }
+      if (!data || !data.length) { historyEl.innerHTML = '<p class="text-xs text-vault-muted">No manual adjustments on record.</p>'; return; }
+      data.forEach(h => {
+        const row = document.createElement('div');
+        row.className = "text-xs rounded-lg bg-vault-surface2 border border-vault-border px-3 py-2";
+        row.innerHTML = '<span class="' + (h.hist_delta >= 0 ? 'text-vault-mint' : 'text-red-400') + ' font-mono">' +
+          (h.hist_delta >= 0 ? '+' : '') + h.hist_delta + ' VP</span> — ' + h.hist_reason +
+          '<br><span class="text-vault-muted">' + h.hist_admin_email + ' · ' + new Date(h.hist_created_at).toLocaleString() + '</span>';
+        historyEl.appendChild(row);
+      });
+    }
+
+    async function adjustBalance() {
+      const statusEl = document.getElementById('adjustStatus');
+      const delta = parseInt(document.getElementById('adjustDelta').value, 10);
+      const reason = document.getElementById('adjustReason').value.trim();
+      if (!selectedBalUserId || isNaN(delta) || !reason) {
+        statusEl.textContent = "Enter a non-zero amount and a reason.";
+        statusEl.className = "mt-3 text-center text-sm text-red-400";
+        return;
+      }
+      const { data, error } = await supabaseClient.rpc('admin_adjust_balance', {
+        p_user_id: selectedBalUserId, p_delta: delta, p_reason: reason
+      });
+      if (error) {
+        statusEl.textContent = "Error: " + error.message;
+        statusEl.className = "mt-3 text-center text-sm text-red-400";
+        return;
+      }
+      if (!data.adjusted) {
+        statusEl.textContent = "Failed: " + data.reason;
+        statusEl.className = "mt-3 text-center text-sm text-red-400";
+        return;
+      }
+      statusEl.textContent = "Applied — new balance: " + data.new_balance + " VP";
+      statusEl.className = "mt-3 text-center text-sm text-vault-mint";
+      document.getElementById('adjustDelta').value = '';
+      document.getElementById('adjustReason').value = '';
+      loadAdjustHistory(selectedBalUserId);
+      searchBalanceUsers();
+    }
+
+
+    function show(id) {
+      ['loadingScreen','signInScreen','deniedScreen','adminPanel'].forEach(s => {
+        document.getElementById(s).classList.toggle('hidden', s !== id);
+      });
+    }
+
+    async function signInWithGoogle() {
+      const { error } = await supabaseClient.auth.signInWithOAuth({
+        provider: 'google',
+        options: { redirectTo: window.location.href }
+      });
+      if (error) alert("Error: " + error.message);
+    }
+
+    async function logOut() {
+      await supabaseClient.auth.signOut();
+      show('signInScreen');
+    }
+
+    // ============ DAILY CONFIG ============
+    async function loadDailyConfig() {
+      const { data, error } = await supabaseClient.rpc('get_daily_config_admin');
+      if (error) { document.getElementById('dailyConfigStatus').textContent = "Error loading: " + error.message; return; }
+      document.getElementById('cfgWord1').value = data.word1 || '';
+      document.getElementById('cfgWord2').value = data.word2 || '';
+      document.getElementById('cfgWord3').value = data.word3 || '';
+      document.getElementById('cfgYoutube').value = data.youtube_url || '';
+      document.getElementById('cfgTelegram').value = data.telegram_url || '';
+      document.getElementById('cfgX').value = data.x_url || '';
+    }
+
+    async function saveDailyConfig() {
+      const statusEl = document.getElementById('dailyConfigStatus');
+      const word1 = document.getElementById('cfgWord1').value.trim().toUpperCase();
+      const word2 = document.getElementById('cfgWord2').value.trim().toUpperCase();
+      const word3 = document.getElementById('cfgWord3').value.trim().toUpperCase();
+      const nineLetters = /^[A-Z]{9}$/;
+      if (![word1, word2, word3].every(w => nineLetters.test(w))) {
+        statusEl.textContent = "Each word must be exactly 9 letters, A-Z only.";
+        statusEl.className = "mt-3 text-center text-sm text-red-400";
+        return;
+      }
+      const { error } = await supabaseClient.rpc('admin_set_daily_words', {
+        p_word1: word1, p_word2: word2, p_word3: word3,
+        p_youtube_url: document.getElementById('cfgYoutube').value.trim(),
+        p_telegram_url: document.getElementById('cfgTelegram').value.trim(),
+        p_x_url: document.getElementById('cfgX').value.trim()
+      });
+      if (error) {
+        statusEl.textContent = "Error: " + error.message;
+        statusEl.className = "mt-3 text-center text-sm text-red-400";
+      } else {
+        statusEl.textContent = "Saved — live for all users now.";
+        statusEl.className = "mt-3 text-center text-sm text-vault-mint";
+      }
+    }
+
+    // ============ TASKS ============
+    function taskRowHtml(task) {
+      const t = task || {};
+      return '<div class="task-row rounded-2xl border border-vault-border bg-vault-surface2 p-4 relative" data-idx="' + (t.idx ?? '') + '">' +
+        '<label class="admin-label">Index</label>' +
+        '<input type="number" class="admin-input task-idx mb-3" value="' + (t.idx ?? '') + '" placeholder="0">' +
+        '<label class="admin-label">Label</label>' +
+        '<input type="text" class="admin-input task-label mb-3" value="' + (t.label || '').replace(/"/g,'&quot;') + '" placeholder="Follow Billboard on Telegram">' +
+        '<div class="grid grid-cols-2 gap-3 mb-3">' +
+          '<div><label class="admin-label">VP Reward</label><input type="number" class="admin-input task-reward" value="' + (t.reward ?? '') + '" placeholder="30"></div>' +
+          '<div><label class="admin-label">URL</label><input type="url" class="admin-input task-url" value="' + (t.url || '').replace(/"/g,'&quot;') + '" placeholder="https://..."></div>' +
+        '</div>' +
+        '<button type="button" onclick="saveTaskRow(this)" class="w-full py-2.5 bg-vault-mint/10 text-vault-mint border border-vault-mint/30 rounded-lg text-sm font-medium">Save Task</button>' +
+      '</div>';
+    }
+
+    function addTaskRow() {
+      document.getElementById('taskRows').insertAdjacentHTML('beforeend', taskRowHtml());
+    }
+
+    async function loadTasks() {
+      const { data, error } = await supabaseClient.from('config_tasks').select('*').order('idx');
+      const container = document.getElementById('taskRows');
+      container.innerHTML = '';
+      if (error) { document.getElementById('tasksStatus').textContent = "Error: " + error.message; return; }
+      (data || []).forEach(t => container.insertAdjacentHTML('beforeend', taskRowHtml(t)));
+    }
+
+    async function saveTaskRow(btn) {
+      const row = btn.closest('.task-row');
+      const idx = parseInt(row.querySelector('.task-idx').value, 10);
+      const label = row.querySelector('.task-label').value.trim();
+      const reward = parseInt(row.querySelector('.task-reward').value, 10);
+      const url = row.querySelector('.task-url').value.trim();
+      const statusEl = document.getElementById('tasksStatus');
+      if (isNaN(idx) || !label || isNaN(reward) || reward <= 0 || !url) {
+        statusEl.textContent = "Every task needs an index, label, positive reward, and URL.";
+        statusEl.className = "mt-3 text-center text-sm text-red-400";
+        return;
+      }
+      const { error } = await supabaseClient.rpc('admin_upsert_task', {
+        p_idx: idx, p_reward: reward, p_label: label, p_url: url
+      });
+      if (error) {
+        statusEl.textContent = "Error: " + error.message;
+        statusEl.className = "mt-3 text-center text-sm text-red-400";
+      } else {
+        statusEl.textContent = "Task saved — live for all users now.";
+        statusEl.className = "mt-3 text-center text-sm text-vault-mint";
+        loadTasks();
+      }
+    }
+
+    // ============ SHOP ITEMS ============
+    function shopRowHtml(item) {
+      const s = item || {};
+      const cats = ['consumable', 'cosmetic', 'pass'];
+      const catOptions = cats.map(c => '<option value="' + c + '"' + (s.category === c ? ' selected' : '') + '>' + c + '</option>').join('');
+      return '<div class="shop-row rounded-2xl border border-vault-border bg-vault-surface2 p-4 relative' + (s.active === false ? ' opacity-50' : '') + '" data-key="' + (s.key || '') + '">' +
+        (s.active === false ? '<p class="text-[10px] font-mono text-red-400 mb-2">INACTIVE</p>' : '') +
+        '<label class="admin-label">Key (unique, no spaces)</label>' +
+        '<input type="text" class="admin-input shop-key mb-3" value="' + (s.key || '') + '" placeholder="reveal_letter"' + (s.key ? ' readonly' : '') + '>' +
+        '<label class="admin-label">Category</label>' +
+        '<select class="admin-input shop-category mb-3">' + catOptions + '</select>' +
+        '<label class="admin-label">Slot (cosmetics only)</label>' +
+        '<input type="text" class="admin-input shop-slot mb-3" value="' + (s.slot || '') + '" placeholder="border / username_color / badge_display">' +
+        '<label class="admin-label">Label</label>' +
+        '<input type="text" class="admin-input shop-label mb-3" value="' + (s.label || '').replace(/"/g,'&quot;') + '">' +
+        '<label class="admin-label">Description</label>' +
+        '<input type="text" class="admin-input shop-description mb-3" value="' + (s.description || '').replace(/"/g,'&quot;') + '">' +
+        '<div class="grid grid-cols-2 gap-3 mb-3">' +
+          '<div><label class="admin-label">Price (VP)</label><input type="number" class="admin-input shop-price" value="' + (s.price ?? '') + '"></div>' +
+          '<div><label class="admin-label">Duration (hrs, passes)</label><input type="number" class="admin-input shop-duration" value="' + (s.duration_hours ?? '') + '"></div>' +
+        '</div>' +
+        '<div class="flex gap-2">' +
+          '<button type="button" onclick="saveShopRow(this)" class="flex-1 py-2.5 bg-vault-mint/10 text-vault-mint border border-vault-mint/30 rounded-lg text-sm font-medium">Save</button>' +
+          (s.key ? '<button type="button" onclick="deactivateShopRow(this)" class="flex-1 py-2.5 bg-red-400/10 text-red-400 border border-red-400/30 rounded-lg text-sm font-medium">Deactivate</button>' : '') +
+        '</div>' +
+      '</div>';
+    }
+
+    function addShopRow() {
+      document.getElementById('shopRows').insertAdjacentHTML('beforeend', shopRowHtml());
+    }
+
+    async function loadShopItems() {
+      const { data, error } = await supabaseClient.rpc('get_all_shop_items_admin');
+      const container = document.getElementById('shopRows');
+      container.innerHTML = '';
+      if (error) { document.getElementById('shopStatus').textContent = "Error: " + error.message; return; }
+      (data || []).forEach(s => container.insertAdjacentHTML('beforeend', shopRowHtml(s)));
+    }
+
+    async function saveShopRow(btn) {
+      const row = btn.closest('.shop-row');
+      const key = row.querySelector('.shop-key').value.trim();
+      const category = row.querySelector('.shop-category').value;
+      const slot = row.querySelector('.shop-slot').value.trim() || null;
+      const label = row.querySelector('.shop-label').value.trim();
+      const description = row.querySelector('.shop-description').value.trim() || null;
+      const price = parseInt(row.querySelector('.shop-price').value, 10);
+      const durationRaw = row.querySelector('.shop-duration').value.trim();
+      const duration = durationRaw ? parseInt(durationRaw, 10) : null;
+      const statusEl = document.getElementById('shopStatus');
+
+      if (!key || !label || isNaN(price) || price <= 0) {
+        statusEl.textContent = "Key, label, and a positive price are required.";
+        statusEl.className = "mt-3 text-center text-sm text-red-400";
+        return;
+      }
+      const { error } = await supabaseClient.rpc('admin_upsert_shop_item', {
+        p_key: key, p_category: category, p_slot: slot, p_label: label,
+        p_description: description, p_price: price, p_duration_hours: duration
+      });
+      if (error) {
+        statusEl.textContent = "Error: " + error.message;
+        statusEl.className = "mt-3 text-center text-sm text-red-400";
+      } else {
+        statusEl.textContent = "Saved — live for all users now.";
+        statusEl.className = "mt-3 text-center text-sm text-vault-mint";
+        loadShopItems();
+      }
+    }
+
+    async function deactivateShopRow(btn) {
+      const row = btn.closest('.shop-row');
+      const key = row.dataset.key;
+      if (!key) return;
+      const { error } = await supabaseClient.rpc('admin_deactivate_shop_item', { p_key: key });
+      const statusEl = document.getElementById('shopStatus');
+      if (error) {
+        statusEl.textContent = "Error: " + error.message;
+        statusEl.className = "mt-3 text-center text-sm text-red-400";
+      } else {
+        statusEl.textContent = "Deactivated.";
+        statusEl.className = "mt-3 text-center text-sm text-vault-mint";
+        loadShopItems();
+      }
+    }
+
+    // ============ BADGES ============
+    async function loadBadgeOptions() {
+      const { data, error } = await supabaseClient.rpc('admin_list_badges');
+      const select = document.getElementById('badgeSelect');
+      select.innerHTML = '';
+      if (error || !data) return;
+      data.forEach(b => {
+        const opt = document.createElement('option');
+        opt.value = b.key;
+        opt.textContent = b.key;
+        select.appendChild(opt);
+      });
+    }
+
+    async function searchUsers() {
+      const q = document.getElementById('userSearchInput').value.trim();
+      const resultsEl = document.getElementById('userSearchResults');
+      if (!q) return;
+      const { data, error } = await supabaseClient.rpc('admin_find_user', { p_query: q });
+      resultsEl.innerHTML = '';
+      if (error) { resultsEl.innerHTML = '<p class="text-sm text-red-400">' + error.message + '</p>'; return; }
+      if (!data || !data.length) { resultsEl.innerHTML = '<p class="text-sm text-vault-muted">No matches.</p>'; return; }
+      data.forEach(u => {
+        const row = document.createElement('div');
+        row.className = "flex items-center justify-between rounded-xl bg-vault-surface2 border border-vault-border px-4 py-3 cursor-pointer";
+        row.innerHTML = '<span class="text-sm">' + u.found_display_name + ' <span class="text-vault-muted">(' + u.found_email + ')</span></span>';
+        row.addEventListener('click', () => selectUser(u.found_user_id, u.found_display_name, u.found_email));
+        resultsEl.appendChild(row);
+      });
+    }
+
+    function selectUser(id, name, email) {
+      selectedUserId = id;
+      document.getElementById('selectedUserLabel').textContent = name + ' (' + email + ')';
+      document.getElementById('grantBadgeForm').classList.remove('hidden');
+    }
+
+    async function grantBadge() {
+      const statusEl = document.getElementById('badgeStatus');
+      if (!selectedUserId) return;
+      const badgeKey = document.getElementById('badgeSelect').value;
+      const { error } = await supabaseClient.rpc('admin_grant_badge', { p_user_id: selectedUserId, p_badge_key: badgeKey });
+      if (error) {
+        statusEl.textContent = "Error: " + error.message;
+        statusEl.className = "mt-3 text-center text-sm text-red-400";
+      } else {
+        statusEl.textContent = "Badge granted.";
+        statusEl.className = "mt-3 text-center text-sm text-vault-mint";
+      }
+    }
+
+    // ============ PARTICIPANT COUNT ============
+    async function loadSignupCount() {
+      const { data } = await supabaseClient.rpc('get_signup_status');
+      if (data) document.getElementById('signupCountDisplay').textContent = data.count + " / 5,000 participants";
+    }
+
+    // ============ INIT / ACCESS CHECK ============
+    async function checkAccess(session) {
+      if (!session) { show('signInScreen'); return; }
+      const { data: profile, error } = await supabaseClient
+        .from('profiles').select('is_admin').eq('id', session.user.id).single();
+      if (error || !profile) { show('deniedScreen'); return; }
+      if (profile.is_admin !== true) { show('deniedScreen'); return; }
+
+      show('adminPanel');
+      loadSignupCount();
+      loadDailyConfig();
+      loadTasks();
+      loadShopItems();
+      loadBadgeOptions();
+    }
+
+    supabaseClient.auth.onAuthStateChange((_event, session) => checkAccess(session));
+    supabaseClient.auth.getSession().then(({ data: { session } }) => checkAccess(session));
+  </script>
+</body>
+</html>
